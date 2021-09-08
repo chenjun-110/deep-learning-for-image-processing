@@ -38,7 +38,7 @@ def main():
     # create model
     model = create_model(num_classes=5, has_logits=False).to(device)
     # load model weights
-    model_weight_path = "./weights/model-9.pth"
+    model_weight_path = "./weights/model-9.pth" #我训练的模型
     model.load_state_dict(torch.load(model_weight_path, map_location=device))
     model.eval()
     with torch.no_grad():

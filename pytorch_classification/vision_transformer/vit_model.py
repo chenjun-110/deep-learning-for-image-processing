@@ -8,7 +8,7 @@ from collections import OrderedDict
 import torch
 import torch.nn as nn
 
-
+#剪枝
 def drop_path(x, drop_prob: float = 0., training: bool = False):
     """
     Drop paths (Stochastic Depth) per sample (when applied in main path of residual blocks).
@@ -39,10 +39,11 @@ class DropPath(nn.Module):
     def forward(self, x):
         return drop_path(x, self.drop_prob, self.training)
 
-
+#卷积(16,16)s16 + flatten
 class PatchEmbed(nn.Module):
     """
     2D Image to Patch Embedding
+    in_c RGB图片
     """
     def __init__(self, img_size=224, patch_size=16, in_c=3, embed_dim=768, norm_layer=None):
         super().__init__()
@@ -50,10 +51,10 @@ class PatchEmbed(nn.Module):
         patch_size = (patch_size, patch_size)
         self.img_size = img_size
         self.patch_size = patch_size
-        self.grid_size = (img_size[0] // patch_size[0], img_size[1] // patch_size[1])
-        self.num_patches = self.grid_size[0] * self.grid_size[1]
+        self.grid_size = (img_size[0] // patch_size[0], img_size[1] // patch_size[1])#(14,14)
+        self.num_patches = self.grid_size[0] * self.grid_size[1]#14*14=196
 
-        self.proj = nn.Conv2d(in_c, embed_dim, kernel_size=patch_size, stride=patch_size)
+        self.proj = nn.Conv2d(in_c, embed_dim, kernel_size=patch_size, stride=patch_size)#卷积(16,16)s16 
         self.norm = norm_layer(embed_dim) if norm_layer else nn.Identity()
 
     def forward(self, x):
@@ -61,8 +62,8 @@ class PatchEmbed(nn.Module):
         assert H == self.img_size[0] and W == self.img_size[1], \
             f"Input image size ({H}*{W}) doesn't match model ({self.img_size[0]}*{self.img_size[1]})."
 
-        # flatten: [B, C, H, W] -> [B, C, HW]
-        # transpose: [B, C, HW] -> [B, HW, C]
+        # flatten(2): [B, C, H, W] -> [B, C, HW] 压平2号位
+        # transpose(1, 2): [B, C, HW] -> [B, HW, C] 位置调换
         x = self.proj(x).flatten(2).transpose(1, 2)
         x = self.norm(x)
         return x
@@ -71,42 +72,43 @@ class PatchEmbed(nn.Module):
 class Attention(nn.Module):
     def __init__(self,
                  dim,   # 输入token的dim
-                 num_heads=8,
-                 qkv_bias=False,
+                 num_heads=8, #头数
+                 qkv_bias=False, #QKV是否用偏置
                  qk_scale=None,
                  attn_drop_ratio=0.,
                  proj_drop_ratio=0.):
         super(Attention, self).__init__()
         self.num_heads = num_heads
-        head_dim = dim // num_heads
-        self.scale = qk_scale or head_dim ** -0.5
-        self.qkv = nn.Linear(dim, dim * 3, bias=qkv_bias)
+        head_dim = dim // num_heads #根据头数均分的维度 
+        self.scale = qk_scale or head_dim ** -0.5 # 根号dim
+        self.qkv = nn.Linear(dim, dim * 3, bias=qkv_bias)#相当于3个线性层、并行
         self.attn_drop = nn.Dropout(attn_drop_ratio)
-        self.proj = nn.Linear(dim, dim)
+        self.proj = nn.Linear(dim, dim)#结尾的concat拼接后要乘w的那个全连接层
         self.proj_drop = nn.Dropout(proj_drop_ratio)
 
     def forward(self, x):
+        # num_patches+1 是普通token加classtoken
         # [batch_size, num_patches + 1, total_embed_dim]
         B, N, C = x.shape
 
         # qkv(): -> [batch_size, num_patches + 1, 3 * total_embed_dim]
         # reshape: -> [batch_size, num_patches + 1, 3, num_heads, embed_dim_per_head]
-        # permute: -> [3, batch_size, num_heads, num_patches + 1, embed_dim_per_head]
+        # permute: -> [3, batch_size, num_heads, num_patches + 1, embed_dim_per_head] 位置调换
         qkv = self.qkv(x).reshape(B, N, 3, self.num_heads, C // self.num_heads).permute(2, 0, 3, 1, 4)
         # [batch_size, num_heads, num_patches + 1, embed_dim_per_head]
         q, k, v = qkv[0], qkv[1], qkv[2]  # make torchscript happy (cannot use tensor as tuple)
 
-        # transpose: -> [batch_size, num_heads, embed_dim_per_head, num_patches + 1]
+        # transpose(-2, -1): -> [batch_size, num_heads, embed_dim_per_head, num_patches + 1] k转置
         # @: multiply -> [batch_size, num_heads, num_patches + 1, num_patches + 1]
         attn = (q @ k.transpose(-2, -1)) * self.scale
-        attn = attn.softmax(dim=-1)
+        attn = attn.softmax(dim=-1)#针对每行作softmax
         attn = self.attn_drop(attn)
 
         # @: multiply -> [batch_size, num_heads, num_patches + 1, embed_dim_per_head]
         # transpose: -> [batch_size, num_patches + 1, num_heads, embed_dim_per_head]
         # reshape: -> [batch_size, num_patches + 1, total_embed_dim]
-        x = (attn @ v).transpose(1, 2).reshape(B, N, C)
-        x = self.proj(x)
+        x = (attn @ v).transpose(1, 2).reshape(B, N, C)#对v加权求和
+        x = self.proj(x) #全连接
         x = self.proj_drop(x)
         return x
 
@@ -132,7 +134,7 @@ class Mlp(nn.Module):
         x = self.drop(x)
         return x
 
-
+# Encoder Block
 class Block(nn.Module):
     def __init__(self,
                  dim,
@@ -147,6 +149,7 @@ class Block(nn.Module):
                  norm_layer=nn.LayerNorm):
         super(Block, self).__init__()
         self.norm1 = norm_layer(dim)
+        # Multi-Head Attention块
         self.attn = Attention(dim, num_heads=num_heads, qkv_bias=qkv_bias, qk_scale=qk_scale,
                               attn_drop_ratio=attn_drop_ratio, proj_drop_ratio=drop_ratio)
         # NOTE: drop path for stochastic depth, we shall see if this is better than dropout here
@@ -156,12 +159,13 @@ class Block(nn.Module):
         self.mlp = Mlp(in_features=dim, hidden_features=mlp_hidden_dim, act_layer=act_layer, drop=drop_ratio)
 
     def forward(self, x):
-        x = x + self.drop_path(self.attn(self.norm1(x)))
-        x = x + self.drop_path(self.mlp(self.norm2(x)))
+        x = x + self.drop_path(self.attn(self.norm1(x))) #Encoder图下半块
+        x = x + self.drop_path(self.mlp(self.norm2(x))) #Encoder图上半块
         return x
 
 
 class VisionTransformer(nn.Module):
+    #depth 12个Encoder块   representation_size是MLP的Pre-Logits的全连接节点个数
     def __init__(self, img_size=224, patch_size=16, in_c=3, num_classes=1000,
                  embed_dim=768, depth=12, num_heads=12, mlp_ratio=4.0, qkv_bias=True,
                  qk_scale=None, representation_size=None, distilled=False, drop_ratio=0.,
@@ -199,15 +203,15 @@ class VisionTransformer(nn.Module):
 
         self.cls_token = nn.Parameter(torch.zeros(1, 1, embed_dim))
         self.dist_token = nn.Parameter(torch.zeros(1, 1, embed_dim)) if distilled else None
-        self.pos_embed = nn.Parameter(torch.zeros(1, num_patches + self.num_tokens, embed_dim))
+        self.pos_embed = nn.Parameter(torch.zeros(1, num_patches + self.num_tokens, embed_dim))#位置编码 embedding (1,197,)
         self.pos_drop = nn.Dropout(p=drop_ratio)
 
-        dpr = [x.item() for x in torch.linspace(0, drop_path_ratio, depth)]  # stochastic depth decay rule
+        dpr = [x.item() for x in torch.linspace(0, drop_path_ratio, depth)]  #点差序列 stochastic depth decay rule
         self.blocks = nn.Sequential(*[
             Block(dim=embed_dim, num_heads=num_heads, mlp_ratio=mlp_ratio, qkv_bias=qkv_bias, qk_scale=qk_scale,
                   drop_ratio=drop_ratio, attn_drop_ratio=attn_drop_ratio, drop_path_ratio=dpr[i],
                   norm_layer=norm_layer, act_layer=act_layer)
-            for i in range(depth)
+            for i in range(depth) #重复堆叠12个Encoder块
         ])
         self.norm = norm_layer(embed_dim)
 
@@ -240,10 +244,10 @@ class VisionTransformer(nn.Module):
     def forward_features(self, x):
         # [B, C, H, W] -> [B, num_patches, embed_dim]
         x = self.patch_embed(x)  # [B, 196, 768]
-        # [1, 1, 768] -> [B, 1, 768]
+        # [1, 1, 768] -> [B, 1, 768] 复制batchsize份cls_token
         cls_token = self.cls_token.expand(x.shape[0], -1, -1)
         if self.dist_token is None:
-            x = torch.cat((cls_token, x), dim=1)  # [B, 197, 768]
+            x = torch.cat((cls_token, x), dim=1)  # 拼接 [B, 196+1, 768] 
         else:
             x = torch.cat((cls_token, self.dist_token.expand(x.shape[0], -1, -1), x), dim=1)
 
@@ -286,7 +290,7 @@ def _init_vit_weights(m):
         nn.init.zeros_(m.bias)
         nn.init.ones_(m.weight)
 
-
+#下面是拿来即用的各种模型，网址是预训练模型，必用！只微调MLP块即可
 def vit_base_patch16_224_in21k(num_classes: int = 21843, has_logits: bool = True):
     """
     ViT-Base model (ViT-B/16) from original paper (https://arxiv.org/abs/2010.11929).
