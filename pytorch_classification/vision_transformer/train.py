@@ -21,14 +21,14 @@ def main(args):
         os.makedirs("./weights")
 
     tb_writer = SummaryWriter()
-
+    # 2939张训练图的路径，731张测试图，5分类
     train_images_path, train_images_label, val_images_path, val_images_label = read_split_data(args.data_path)
 
     data_transform = {
-        "train": transforms.Compose([transforms.RandomResizedCrop(224),
-                                     transforms.RandomHorizontalFlip(),
-                                     transforms.ToTensor(),
-                                     transforms.Normalize([0.5, 0.5, 0.5], [0.5, 0.5, 0.5])]),
+        "train": transforms.Compose([transforms.RandomResizedCrop(224),#随机裁剪缩放
+                                     transforms.RandomHorizontalFlip(),#随机镜像翻转
+                                     transforms.ToTensor(),#(0,255)->(0,1)
+                                     transforms.Normalize([0.5, 0.5, 0.5], [0.5, 0.5, 0.5])]),#(0,1)->(-1,1)
         "val": transforms.Compose([transforms.Resize(256),
                                    transforms.CenterCrop(224),
                                    transforms.ToTensor(),
@@ -124,11 +124,11 @@ if __name__ == '__main__':
     # 数据集所在根目录 花
     # http://download.tensorflow.org/example_images/flower_photos.tgz
     parser.add_argument('--data-path', type=str,
-                        default="/data/flower_photos")
+                        default="./data/flower_photos")
     parser.add_argument('--model-name', default='', help='create model name')
 
     # 预训练权重路径，如果不想载入就设置为空字符 
-    parser.add_argument('--weights', type=str, default='./vit_base_patch16_224_in21k.pth',
+    parser.add_argument('--weights', type=str, default='./data/vit_base_patch16_224_in21k.pth',
                         help='initial weights path')
     # 是否冻结权重
     parser.add_argument('--freeze-layers', type=bool, default=True)

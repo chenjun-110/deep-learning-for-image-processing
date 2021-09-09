@@ -165,7 +165,7 @@ class Block(nn.Module):
 
 
 class VisionTransformer(nn.Module):
-    #depth 12个Encoder块   representation_size是MLP的Pre-Logits的全连接节点个数
+    # depth 12个Encoder块   
     def __init__(self, img_size=224, patch_size=16, in_c=3, num_classes=1000,
                  embed_dim=768, depth=12, num_heads=12, mlp_ratio=4.0, qkv_bias=True,
                  qk_scale=None, representation_size=None, distilled=False, drop_ratio=0.,
@@ -173,21 +173,21 @@ class VisionTransformer(nn.Module):
                  act_layer=None):
         """
         Args:
-            img_size (int, tuple): input image size
-            patch_size (int, tuple): patch size
-            in_c (int): number of input channels
-            num_classes (int): number of classes for classification head
-            embed_dim (int): embedding dimension
-            depth (int): depth of transformer
-            num_heads (int): number of attention heads
-            mlp_ratio (int): ratio of mlp hidden dim to embedding dim
-            qkv_bias (bool): enable bias for qkv if True
-            qk_scale (float): override default qk scale of head_dim ** -0.5 if set
-            representation_size (Optional[int]): enable and set representation layer (pre-logits) to this value if set
-            distilled (bool): model includes a distillation token and head as in DeiT models
+            img_size (int, tuple): 输入图像大小
+            patch_size (int, tuple): 块大小
+            in_c (int): 输入通道数
+            num_classes (int): 头分类的类别数
+            embed_dim (int): 嵌入维数
+            depth (int): 12个Encoder块
+            num_heads (int): 注意头数
+            mlp_ratio (int): MLP隐层维度与嵌入维度的比值
+            qkv_bias (bool): 开启qkv偏置
+            qk_scale (float): 如果设置了head_dim ** -0.5，覆盖默认的qk scale
+            representation_size (Optional[int]): MLP的Pre-Logits的全连接节点个数
+            distilled (bool): 模型包括一个distillation token和DeiT模型的头
             drop_ratio (float): dropout rate
             attn_drop_ratio (float): attention dropout rate
-            drop_path_ratio (float): stochastic depth rate
+            drop_path_ratio (float): 随机 depth rate
             embed_layer (nn.Module): patch embedding layer
             norm_layer: (nn.Module): normalization layer
         """
@@ -291,6 +291,7 @@ def _init_vit_weights(m):
         nn.init.ones_(m.weight)
 
 #下面是拿来即用的各种模型，网址是预训练模型，必用！只微调MLP块即可
+#num_classes 标签类别数
 def vit_base_patch16_224_in21k(num_classes: int = 21843, has_logits: bool = True):
     """
     ViT-Base model (ViT-B/16) from original paper (https://arxiv.org/abs/2010.11929).

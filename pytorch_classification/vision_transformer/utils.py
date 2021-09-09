@@ -18,7 +18,7 @@ def read_split_data(root: str, val_rate: float = 0.2):
     flower_class = [cla for cla in os.listdir(root) if os.path.isdir(os.path.join(root, cla))]
     # 排序，保证顺序一致
     flower_class.sort()
-    # 生成类别名称以及对应的数字索引
+    # class_indices={文件夹名：索引}
     class_indices = dict((k, v) for v, k in enumerate(flower_class))
     json_str = json.dumps(dict((val, key) for key, val in class_indices.items()), indent=4)
     with open('class_indices.json', 'w') as json_file:
@@ -28,12 +28,12 @@ def read_split_data(root: str, val_rate: float = 0.2):
     train_images_label = []  # 存储训练集图片对应索引信息
     val_images_path = []  # 存储验证集的所有图片路径
     val_images_label = []  # 存储验证集图片对应索引信息
-    every_class_num = []  # 存储每个类别的样本总数
+    every_class_num = []  # 存储每类的样本总数
     supported = [".jpg", ".JPG", ".png", ".PNG"]  # 支持的文件后缀类型
     # 遍历每个文件夹下的文件
     for cla in flower_class:
         cla_path = os.path.join(root, cla)
-        # 遍历获取supported支持的所有文件路径
+        # 遍历获取supported支持格式的所有文件路径
         images = [os.path.join(root, cla, i) for i in os.listdir(cla_path)
                   if os.path.splitext(i)[-1] in supported]
         # 获取该类别对应的索引
