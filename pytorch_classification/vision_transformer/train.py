@@ -46,10 +46,10 @@ def main(args):
 
     batch_size = args.batch_size
     nw = min([os.cpu_count(), batch_size if batch_size > 1 else 0, 8])  # number of workers
-    print('Using {} dataloader workers every process'.format(nw))
+    print('{} 个子进程'.format(nw))
     train_loader = torch.utils.data.DataLoader(train_dataset,
                                                batch_size=batch_size,
-                                               shuffle=True,
+                                               shuffle=True,#每轮epoch洗牌
                                                pin_memory=True,
                                                num_workers=nw,
                                                collate_fn=train_dataset.collate_fn)
@@ -62,30 +62,31 @@ def main(args):
                                              collate_fn=val_dataset.collate_fn)
 
     model = create_model(num_classes=5, has_logits=False).to(device)
-
+    print('实例化model')
     if args.weights != "":
         assert os.path.exists(args.weights), "weights file: '{}' not exist.".format(args.weights)
         weights_dict = torch.load(args.weights, map_location=device)
+        print('加载预训练model')
         # 删除不需要的权重
         del_keys = ['head.weight', 'head.bias'] if model.has_logits \
             else ['pre_logits.fc.weight', 'pre_logits.fc.bias', 'head.weight', 'head.bias']
         for k in del_keys:
             del weights_dict[k]
         print(model.load_state_dict(weights_dict, strict=False))
-
+  
     if args.freeze_layers:
         for name, para in model.named_parameters():
             # 除head, pre_logits外，其他权重全部冻结
             if "head" not in name and "pre_logits" not in name:
-                para.requires_grad_(False)
+                para.requires_grad_(False) #False冻结 预训练参数
             else:
-                print("training {}".format(name))
+                print("training {}".format(name)) #只训练这2个
 
     pg = [p for p in model.parameters() if p.requires_grad]
     optimizer = optim.SGD(pg, lr=args.lr, momentum=0.9, weight_decay=5E-5)
     # Scheduler https://arxiv.org/pdf/1812.01187.pdf
     lf = lambda x: ((1 + math.cos(x * math.pi / args.epochs)) / 2) * (1 - args.lrf) + args.lrf  # cosine
-    scheduler = lr_scheduler.LambdaLR(optimizer, lr_lambda=lf)
+    scheduler = lr_scheduler.LambdaLR(optimizer, lr_lambda=lf) #将每个参数组的学习率设置为初始 lr 乘以给定函数
 
     for epoch in range(args.epochs):
         # train
@@ -93,7 +94,7 @@ def main(args):
                                                 optimizer=optimizer,
                                                 data_loader=train_loader,
                                                 device=device,
-                                                epoch=epoch)
+                                                epoch=epoch, tb_writer=tb_writer)
 
         scheduler.step()
 

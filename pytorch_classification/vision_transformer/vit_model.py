@@ -53,8 +53,8 @@ class PatchEmbed(nn.Module):
         self.patch_size = patch_size
         self.grid_size = (img_size[0] // patch_size[0], img_size[1] // patch_size[1])#(14,14)
         self.num_patches = self.grid_size[0] * self.grid_size[1]#14*14=196
-
-        self.proj = nn.Conv2d(in_c, embed_dim, kernel_size=patch_size, stride=patch_size)#卷积(16,16)s16 
+                            #卷积3 768 (16,16) s16
+        self.proj = nn.Conv2d(in_c, embed_dim, kernel_size=patch_size, stride=patch_size) 
         self.norm = norm_layer(embed_dim) if norm_layer else nn.Identity()
 
     def forward(self, x):
@@ -64,7 +64,10 @@ class PatchEmbed(nn.Module):
 
         # flatten(2): [B, C, H, W] -> [B, C, HW] 压平2号位
         # transpose(1, 2): [B, C, HW] -> [B, HW, C] 位置调换
-        x = self.proj(x).flatten(2).transpose(1, 2)
+        # x = self.proj(x).flatten(2).transpose(1, 2)
+        x = self.proj(x)     # (8,3,224,224) -> (8,768,14,14)
+        x = x.flatten(2)     # (8,768,196)
+        x = x.transpose(1, 2)# (8,196,768) 768在后面为了跟clstoken对齐
         x = self.norm(x)
         return x
 
@@ -243,15 +246,15 @@ class VisionTransformer(nn.Module):
 
     def forward_features(self, x):
         # [B, C, H, W] -> [B, num_patches, embed_dim]
-        x = self.patch_embed(x)  # [B, 196, 768]
-        # [1, 1, 768] -> [B, 1, 768] 复制batchsize份cls_token
-        cls_token = self.cls_token.expand(x.shape[0], -1, -1)
+        x = self.patch_embed(x)  # [B, 196, 768] patch_embed也是model
+        # [1, 1, 768] -> [B, 1, 768] cls_token复制batchsize份
+        cls_token = self.cls_token.expand(x.shape[0], -1, -1) #cls_token为何有值？
         if self.dist_token is None:
             x = torch.cat((cls_token, x), dim=1)  # 拼接 [B, 196+1, 768] 
         else:
             x = torch.cat((cls_token, self.dist_token.expand(x.shape[0], -1, -1), x), dim=1)
 
-        x = self.pos_drop(x + self.pos_embed)
+        x = self.pos_drop(x + self.pos_embed) # (8,197,768) + 位置编码(1,197,768)
         x = self.blocks(x)
         x = self.norm(x)
         if self.dist_token is None:

@@ -111,7 +111,7 @@ def read_pickle(file_name: str) -> list:
         return info_list
 
 
-def train_one_epoch(model, optimizer, data_loader, device, epoch):
+def train_one_epoch(model, optimizer, data_loader, device, epoch,tb_writer):
     model.train()
     loss_function = torch.nn.CrossEntropyLoss()
     accu_loss = torch.zeros(1).to(device)  # 累计损失
@@ -121,16 +121,15 @@ def train_one_epoch(model, optimizer, data_loader, device, epoch):
     sample_num = 0
     data_loader = tqdm(data_loader)
     for step, data in enumerate(data_loader):
-        images, labels = data
+        images, labels = data #(8,3,224,224) (8)
         sample_num += images.shape[0]
-
         pred = model(images.to(device))
         pred_classes = torch.max(pred, dim=1)[1]
         accu_num += torch.eq(pred_classes, labels.to(device)).sum()
 
         loss = loss_function(pred, labels.to(device))
         loss.backward()
-        accu_loss += loss.detach()
+        accu_loss += loss.detach()#取值 张量累加
 
         data_loader.desc = "[train epoch {}] loss: {:.3f}, acc: {:.3f}".format(epoch,
                                                                                accu_loss.item() / (step + 1),
@@ -139,6 +138,8 @@ def train_one_epoch(model, optimizer, data_loader, device, epoch):
         if not torch.isfinite(loss):
             print('WARNING: non-finite loss, ending training ', loss)
             sys.exit(1)
+
+
 
         optimizer.step()
         optimizer.zero_grad()
